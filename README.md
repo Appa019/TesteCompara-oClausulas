@@ -1,0 +1,1 @@
+# TesteCompara-oClausulas
