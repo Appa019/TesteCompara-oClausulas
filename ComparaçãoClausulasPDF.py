@@ -271,12 +271,7 @@ def main():
 
 if __name__ == "__main__":
     main(),  # Números de página isolados
-        r'anexo [iv]+\s*[-–]',
-        r'apêndice [iv]+\s*[-–]',
-        r'página \d+',
-        r'cep \d+',
-        r'cnpj',
-        r'\.pdf
+        r'anexo [iv]+\s*[-–]',r'apêndice [iv]+\s*[-–]',r'página \d+',r'cep \d+',r'cnpj',r'\.pdf
 
 def generate_summary(clause_text, api_key):
     """Gera resumo da cláusula usando OpenAI"""
