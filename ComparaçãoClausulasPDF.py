@@ -37,35 +37,134 @@ class ContractComparator:
         """Extrai cláusulas e subcláusulas do texto do contrato"""
         clauses = {}
         
-        # Padrões para identificar cláusulas
-        patterns = [
-            r'CLÁUSULA\s+([A-Z]+(?:\s+E\s+[A-Z]+)*)\s*[–-]\s*([^§]+?)(?=CLÁUSULA\s+[A-Z]+|$)',
-            r'(\d+\.\d+(?:\.\d+)*)\s*[–-]?\s*([^§]+?)(?=\d+\.\d+(?:\.\d+)*\s*[–-]?|CLÁUSULA|$)',
-            r'(\d+\.\d+(?:\.\d+)*)\s+([^§]+?)(?=\d+\.\d+(?:\.\d+)*|CLÁUSULA|$)',
-            r'([A-Z][^:]*:)\s*([^§]+?)(?=[A-Z][^:]*:|CLÁUSULA|$)'
-        ]
+        # Limpar texto para melhor processamento
+        text = re.sub(r'\s+', ' ', text)
         
-        for pattern in patterns:
-            matches = re.finditer(pattern, text, re.DOTALL | re.IGNORECASE)
-            for match in matches:
-                clause_id = match.group(1).strip()
-                clause_content = match.group(2).strip()
+        # 1. Padrão para cláusulas principais: CLÁUSULA PRIMEIRA – NOME DA CLÁUSULA
+        main_clause_pattern = r'CLÁUSULA\s+(PRIMEIRA|SEGUNDA|TERCEIRA|QUARTA|QUINTA|SEXTA|SÉTIMA|OITAVA|NONA|DÉCIMA|ONZE|DOZE|TREZE|QUATORZE|QUINZE|DEZESSEIS|DEZESSETE|DEZOITO|DEZENOVE|VINTE|VINTE\s+E\s+UM|VINTE\s+E\s+DOIS|VINTE\s+E\s+TRÊS)\s*[–-]\s*([^§]+?)(?=CLÁUSULA\s+(?:PRIMEIRA|SEGUNDA|TERCEIRA|QUARTA|QUINTA|SEXTA|SÉTIMA|OITAVA|NONA|DÉCIMA|ONZE|DOZE|TREZE|QUATORZE|QUINZE|DEZESSEIS|DEZESSETE|DEZOITO|DEZENOVE|VINTE|VINTE\s+E\s+UM|VINTE\s+E\s+DOIS|VINTE\s+E\s+TRÊS)|ANEXO|APÊNDICE|$)'
+        
+        # 2. Padrão para anexos e apêndices
+        annex_pattern = r'(ANEXO\s+[I-V]+(?:-[A-Z])?|APÊNDICE\s+[I-V]+)\s*[–-]\s*([^§]+?)(?=(?:ANEXO|APÊNDICE|CLÁUSULA)\s+|$)'
+        
+        # 3. Padrão para subcláusulas de todos os níveis (1.1, 1.1.1, 1.1.1.1, etc.)
+        subclause_pattern = r'(\d+\.\d+(?:\.\d+)*)\s*([A-Z][^§]+?)(?=\d+\.\d+(?:\.\d+)*\s+[A-Z]|CLÁUSULA|ANEXO|APÊNDICE|$)'
+        
+        # 4. Padrão para itens com letras (a), (b), (c), etc.
+        letter_item_pattern = r'\(([a-z])\)\s*([^§]+?)(?=\([a-z]\)|CLÁUSULA|ANEXO|APÊNDICE|\d+\.\d+|$)'
+        
+        # 5. Padrão para itens com números romanos (i), (ii), (iii), etc.
+        roman_item_pattern = r'\(([ivx]+)\)\s*([^§]+?)(?=\([ivx]+\)|CLÁUSULA|ANEXO|APÊNDICE|\d+\.\d+|$)'
+        
+        # Extrair cláusulas principais
+        main_matches = re.finditer(main_clause_pattern, text, re.DOTALL | re.IGNORECASE)
+        for match in main_matches:
+            clause_number = match.group(1).strip()
+            clause_content = match.group(2).strip()
+            
+            # Extrair o título da cláusula (primeira linha geralmente)
+            title_match = re.match(r'^([^\.]+?)(?:\s*\.\s*|\s*$)', clause_content)
+            if title_match:
+                clause_title = title_match.group(1).strip()
+                clause_id = f"CLÁUSULA {clause_number} – {clause_title}"
+            else:
+                clause_id = f"CLÁUSULA {clause_number}"
+            
+            # Limitar tamanho do conteúdo
+            if len(clause_content) > 4000:
+                clause_content = clause_content[:4000] + "..."
+            
+            clauses[clause_id] = clause_content
+        
+        # Extrair anexos e apêndices
+        annex_matches = re.finditer(annex_pattern, text, re.DOTALL | re.IGNORECASE)
+        for match in annex_matches:
+            annex_id = match.group(1).strip()
+            annex_content = match.group(2).strip()
+            
+            # Extrair título do anexo/apêndice
+            title_match = re.match(r'^([^\.]+?)(?:\s*\.\s*|\s*$)', annex_content)
+            if title_match:
+                annex_title = title_match.group(1).strip()
+                full_annex_id = f"{annex_id} – {annex_title}"
+            else:
+                full_annex_id = annex_id
+            
+            # Limitar tamanho do conteúdo
+            if len(annex_content) > 4000:
+                annex_content = annex_content[:4000] + "..."
+            
+            clauses[full_annex_id] = annex_content
+        
+        # Extrair subcláusulas numeradas (TODOS os níveis: 1.1, 1.1.1, 1.1.1.1, etc.)
+        subclause_matches = re.finditer(subclause_pattern, text, re.DOTALL | re.IGNORECASE)
+        for match in subclause_matches:
+            subclause_id = match.group(1).strip()
+            subclause_content = match.group(2).strip()
+            
+            # Verificar se é uma subcláusula substancial (mais de 80 caracteres)
+            if len(subclause_content) > 80:
+                # Limitar tamanho do conteúdo
+                if len(subclause_content) > 3000:
+                    subclause_content = subclause_content[:3000] + "..."
                 
-                # Limpar conteúdo da cláusula
-                clause_content = re.sub(r'\s+', ' ', clause_content)
-                clause_content = clause_content[:2000]  # Limitar tamanho
+                clauses[f"Item {subclause_id}"] = subclause_content
+        
+        # Extrair itens com letras (a), (b), (c)
+        letter_matches = re.finditer(letter_item_pattern, text, re.DOTALL | re.IGNORECASE)
+        for match in letter_matches:
+            letter_id = match.group(1).strip()
+            letter_content = match.group(2).strip()
+            
+            # Verificar se é um item substancial
+            if len(letter_content) > 60:
+                # Limitar tamanho do conteúdo
+                if len(letter_content) > 2000:
+                    letter_content = letter_content[:2000] + "..."
                 
-                if len(clause_content) > 50:  # Filtrar cláusulas muito pequenas
-                    clauses[clause_id] = clause_content
+                clauses[f"Item ({letter_id})"] = letter_content
+        
+        # Extrair itens com números romanos (i), (ii), (iii)
+        roman_matches = re.finditer(roman_item_pattern, text, re.DOTALL | re.IGNORECASE)
+        for match in roman_matches:
+            roman_id = match.group(1).strip()
+            roman_content = match.group(2).strip()
+            
+            # Verificar se é um item substancial
+            if len(roman_content) > 60:
+                # Limitar tamanho do conteúdo
+                if len(roman_content) > 2000:
+                    roman_content = roman_content[:2000] + "..."
+                
+                clauses[f"Item ({roman_id})"] = roman_content
+        
+        # Extrair seções específicas importantes que podem não seguir padrões anteriores
+        # Padrão para seções com títulos em maiúsculas
+        section_pattern = r'([A-Z][A-Z\s]{10,})\s*([^§]+?)(?=[A-Z][A-Z\s]{10,}|CLÁUSULA|ANEXO|APÊNDICE|$)'
+        section_matches = re.finditer(section_pattern, text, re.DOTALL)
+        for match in section_matches:
+            section_title = match.group(1).strip()
+            section_content = match.group(2).strip()
+            
+            # Filtrar seções substanciais e relevantes
+            if (len(section_content) > 100 and 
+                not section_title.startswith("CLÁUSULA") and
+                not section_title.startswith("ANEXO") and
+                not section_title.startswith("APÊNDICE")):
+                
+                # Limitar tamanho do conteúdo
+                if len(section_content) > 3000:
+                    section_content = section_content[:3000] + "..."
+                
+                clauses[f"Seção: {section_title}"] = section_content
         
         return clauses
     
     def compare_clauses_with_ai(self, clause_id: str, clauses: Dict[str, str], contract_names: List[str]) -> Dict:
         """Compara cláusulas usando o modelo GPT-4.1 nano da OpenAI"""
         
-        # Preparar o prompt
+        # Preparar o prompt com contexto específico para contratos jurídicos
         prompt = f"""
-        Analise as seguintes cláusulas da seção "{clause_id}" de três contratos diferentes e identifique APENAS diferenças significativas que afetam o sentido legal:
+        Analise as seguintes versões da seção "{clause_id}" de três contratos jurídicos diferentes e identifique APENAS diferenças significativas que alterem o sentido legal ou impacto contratual:
 
         """
         
@@ -74,17 +173,26 @@ class ContractComparator:
         
         prompt += """
         
-        Retorne APENAS se houver diferenças significativas que alterem:
-        - Obrigações das partes
-        - Valores, percentuais ou datas
-        - Prazos ou condições
-        - Penalidades ou consequências legais
-        - Direitos ou responsabilidades
+        CRITÉRIOS para identificar diferenças SIGNIFICATIVAS:
+        1. Alterações em obrigações ou direitos das partes
+        2. Mudanças em valores monetários, percentuais ou prazos
+        3. Alterações em penalidades, multas ou sanções
+        4. Modificações em condições de rescisão ou término
+        5. Diferenças em procedimentos ou requisitos legais
+        6. Alterações em definições que impactem outras cláusulas
+        7. Mudanças em jurisdição ou lei aplicável
+        8. Diferenças em garantias ou responsabilidades
         
-        Se houver diferenças significativas, retorne um JSON com:
+        IGNORE:
+        - Diferenças meramente estilísticas ou de redação
+        - Alterações na ordem das palavras sem mudança de significado
+        - Variações em formatação ou pontuação
+        - Pequenas diferenças gramaticais
+        
+        Se houver diferenças SIGNIFICATIVAS, retorne:
         {
             "tem_diferenca": true,
-            "diferenca_encontrada": "descrição clara da diferença legal encontrada"
+            "diferenca_encontrada": "Descrição precisa e concisa da diferença legal encontrada, focando no impacto prático"
         }
         
         Se NÃO houver diferenças significativas, retorne:
@@ -98,10 +206,10 @@ class ContractComparator:
             response = self.client.chat.completions.create(
                 model="gpt-4.1-nano",
                 messages=[
-                    {"role": "system", "content": "Você é um especialista em análise jurídica de contratos. Analise apenas diferenças que tenham impacto legal significativo."},
+                    {"role": "system", "content": "Você é um advogado especialista em análise comparativa de contratos. Foque apenas em diferenças que tenham impacto legal real e prático."},
                     {"role": "user", "content": prompt}
                 ],
-                max_tokens=500,
+                max_tokens=800,
                 temperature=0.1
             )
             
@@ -141,21 +249,106 @@ class ContractComparator:
             
             progress_bar.progress((i + 1) / len(pdf_files) * 0.3)
         
-        # Encontrar cláusulas comuns
-        status_text.text("Identificando cláusulas comuns...")
+        # Encontrar cláusulas comuns e organizar por importância
+        status_text.text("Identificando e organizando cláusulas...")
         all_clause_ids = set()
         for clauses in contracts_clauses.values():
             all_clause_ids.update(clauses.keys())
+        
+        # Priorizar cláusulas principais (ordenar por importância)
+        def clause_priority(clause_id):
+            if clause_id.startswith("CLÁUSULA"):
+                # Extrair número da cláusula para ordenação
+                if "PRIMEIRA" in clause_id:
+                    return 1
+                elif "SEGUNDA" in clause_id:
+                    return 2
+                elif "TERCEIRA" in clause_id:
+                    return 3
+                elif "QUARTA" in clause_id:
+                    return 4
+                elif "QUINTA" in clause_id:
+                    return 5
+                elif "SEXTA" in clause_id:
+                    return 6
+                elif "SÉTIMA" in clause_id:
+                    return 7
+                elif "OITAVA" in clause_id:
+                    return 8
+                elif "NONA" in clause_id:
+                    return 9
+                elif "DÉCIMA" in clause_id:
+                    return 10
+                elif "ONZE" in clause_id:
+                    return 11
+                elif "DOZE" in clause_id:
+                    return 12
+                elif "TREZE" in clause_id:
+                    return 13
+                elif "QUATORZE" in clause_id:
+                    return 14
+                elif "QUINZE" in clause_id:
+                    return 15
+                elif "DEZESSEIS" in clause_id:
+                    return 16
+                elif "DEZESSETE" in clause_id:
+                    return 17
+                elif "DEZOITO" in clause_id:
+                    return 18
+                elif "DEZENOVE" in clause_id:
+                    return 19
+                elif "VINTE" in clause_id:
+                    if "UM" in clause_id:
+                        return 21
+                    elif "DOIS" in clause_id:
+                        return 22
+                    elif "TRÊS" in clause_id:
+                        return 23
+                    else:
+                        return 20
+                else:
+                    return 100
+            elif clause_id.startswith("ANEXO"):
+                return 200
+            elif clause_id.startswith("APÊNDICE"):
+                return 300
+            elif clause_id.startswith("Item") and "." in clause_id:
+                # Ordenar subcláusulas numeradas (1.1, 1.1.1, etc.)
+                numbers = clause_id.replace("Item ", "").split(".")
+                try:
+                    return 400 + int(numbers[0]) + int(numbers[1])/100 + (int(numbers[2])/10000 if len(numbers) > 2 else 0)
+                except:
+                    return 450
+            elif clause_id.startswith("Item ("):
+                # Itens com letras ou números romanos
+                return 500
+            elif clause_id.startswith("Seção:"):
+                return 600
+            else:
+                return 700
+        
+        # Ordenar cláusulas por prioridade
+        sorted_clause_ids = sorted(all_clause_ids, key=clause_priority)
+        
+        # Mostrar estatísticas de extração
+        st.info(f"📊 **Cláusulas extraídas:** {len(all_clause_ids)} seções identificadas para análise")
+        
+        # Mostrar preview das cláusulas encontradas
+        with st.expander("🔍 Preview das cláusulas encontradas"):
+            for i, clause_id in enumerate(sorted_clause_ids[:10]):  # Mostrar primeiras 10
+                st.write(f"**{i+1}.** {clause_id}")
+            if len(sorted_clause_ids) > 10:
+                st.write(f"... e mais {len(sorted_clause_ids) - 10} cláusulas")
         
         # Preparar dados para comparação
         results = []
         contract_names = list(contracts_clauses.keys())
         
-        total_clauses = len(all_clause_ids)
+        total_clauses = len(sorted_clause_ids)
         processed_clauses = 0
         
-        for clause_id in all_clause_ids:
-            status_text.text(f"Comparando cláusula: {clause_id}")
+        for clause_id in sorted_clause_ids:
+            status_text.text(f"Comparando: {clause_id[:50]}...")
             
             # Coletar cláusulas dos 3 contratos
             clause_contents = {}
@@ -176,9 +369,12 @@ class ContractComparator:
                         "Diferença": comparison_result.get("diferenca_encontrada", "")
                     }
                     
-                    # Adicionar conteúdo de cada contrato
+                    # Adicionar conteúdo de cada contrato (limitado para visualização)
                     for contract_name in contract_names:
-                        row[contract_name] = clause_contents[contract_name][:500] + "..." if len(clause_contents[contract_name]) > 500 else clause_contents[contract_name]
+                        content = clause_contents[contract_name]
+                        if len(content) > 800:
+                            content = content[:800] + "..."
+                        row[contract_name] = content
                     
                     results.append(row)
             
@@ -186,9 +382,9 @@ class ContractComparator:
             progress_bar.progress(0.3 + (processed_clauses / total_clauses) * 0.7)
             
             # Pequena pausa para evitar rate limiting
-            time.sleep(0.1)
+            time.sleep(0.2)
         
-        status_text.text("Concluído!")
+        status_text.text("✅ Análise concluída!")
         return pd.DataFrame(results)
 
 def main():
