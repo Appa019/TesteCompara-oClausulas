@@ -82,7 +82,7 @@ def identify_clauses(text):
     # Indicadores de sumário para filtrar
     sumario_indicators = [
         r'\.{3,}',  # Pontos de continuação
-        r'\b\d+\s*
+        r'\b\d+\s*']
 
 def generate_summary(clause_text, api_key):
     """Gera resumo da cláusula usando OpenAI"""
