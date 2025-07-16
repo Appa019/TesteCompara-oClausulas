@@ -15,19 +15,20 @@ st.set_page_config(
 )
 
 def extract_text_from_pdf(pdf_file):
-    """Extrai texto do PDF"""
+    """Extrai texto do PDF a partir da página 4 (onde começam as cláusulas reais)"""
     try:
         pdf_reader = PyPDF2.PdfReader(pdf_file)
         text = ""
-        for page in pdf_reader.pages:
-            text += page.extract_text() + "\n"
+        # Começar da página 4 (índice 3) para pular sumário e páginas iniciais
+        for page_num in range(3, len(pdf_reader.pages)):  # Página 4 em diante
+            text += pdf_reader.pages[page_num].extract_text() + "\n"
         return text
     except Exception as e:
         st.error(f"Erro ao extrair texto do PDF: {str(e)}")
         return None
 
 def identify_clauses(text):
-    """Identifica e extrai todas as cláusulas e subcláusulas"""
+    """Identifica e extrai todas as cláusulas e subcláusulas, ignorando sumários"""
     clauses = []
     
     # Padrões para identificar cláusulas
@@ -41,6 +42,9 @@ def identify_clauses(text):
         r'^[ivx]+\)\s'
     ]
     
+    # Palavras que indicam sumário/índice (para filtrar)
+    sumario_keywords = ['sumário', 'índice', 'página', 'de 199', 'anexo i', 'anexo ii', 'anexo iii', 'anexo iv', 'apêndice']
+    
     lines = text.split('\n')
     current_clause = None
     current_content = []
@@ -48,6 +52,11 @@ def identify_clauses(text):
     for line in lines:
         line = line.strip()
         if not line:
+            continue
+            
+        # Filtrar linhas que parecem ser do sumário
+        line_lower = line.lower()
+        if any(keyword in line_lower for keyword in sumario_keywords):
             continue
             
         # Verificar se a linha é uma nova cláusula
@@ -65,7 +74,7 @@ def identify_clauses(text):
             # Salvar cláusula anterior se existir
             if current_clause and current_content:
                 content = ' '.join(current_content).strip()
-                if content:
+                if content and len(content) > 20:  # Filtrar conteúdos muito curtos
                     clauses.append({
                         'numero': current_clause,
                         'conteudo': content
@@ -87,7 +96,7 @@ def identify_clauses(text):
     # Adicionar última cláusula
     if current_clause and current_content:
         content = ' '.join(current_content).strip()
-        if content:
+        if content and len(content) > 20:  # Filtrar conteúdos muito curtos
             clauses.append({
                 'numero': current_clause,
                 'conteudo': content
@@ -128,7 +137,7 @@ def process_contract(pdf_file, api_key=None):
     """Processa o contrato completo"""
     
     # Extrair texto do PDF
-    st.info("📄 Extraindo texto do PDF...")
+    st.info("📄 Extraindo texto do PDF (a partir da página 4)...")
     text = extract_text_from_pdf(pdf_file)
     
     if not text:
