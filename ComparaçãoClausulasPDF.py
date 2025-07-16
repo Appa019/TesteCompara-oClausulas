@@ -61,7 +61,7 @@ class ContractComparator:
         return clauses
     
     def compare_clauses_with_ai(self, clause_id: str, clauses: Dict[str, str], contract_names: List[str]) -> Dict:
-        """Compara cláusulas usando o modelo o3-mini da OpenAI"""
+        """Compara cláusulas usando o modelo GPT-4.1 nano da OpenAI"""
         
         # Preparar o prompt
         prompt = f"""
@@ -96,7 +96,7 @@ class ContractComparator:
         
         try:
             response = self.client.chat.completions.create(
-                model="o3-mini",
+                model="gpt-4.1-nano",
                 messages=[
                     {"role": "system", "content": "Você é um especialista em análise jurídica de contratos. Analise apenas diferenças que tenham impacto legal significativo."},
                     {"role": "user", "content": prompt}
@@ -203,7 +203,7 @@ def main():
         api_key = st.text_input(
             "Chave da API OpenAI",
             type="password",
-            help="Insira sua chave da API OpenAI para usar o modelo o3-mini"
+            help="Insira sua chave da API OpenAI para usar o modelo GPT-4.1 nano"
         )
         
         # Opção para usar variável de ambiente
@@ -337,7 +337,7 @@ def main():
         - Variações em penalidades
         - Alterações em direitos e responsabilidades
         
-        **Modelo de IA:** OpenAI o3-mini
+        **Modelo de IA:** OpenAI GPT-4.1 nano
         """)
 
 if __name__ == "__main__":
