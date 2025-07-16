@@ -7,7 +7,13 @@ import openai
 from io import BytesIO
 import traceback
 
-# ... (Mantenha as funções extract_text_from_pdf e fix_text_breaks como estão) ...
+# Configuração da página
+st.set_page_config(
+    page_title="Processador de Cláusulas - NTS/TAG/TBG",
+    page_icon="📄",
+    layout="wide"
+)
+
 def extract_text_from_pdf(pdf_file):
     """Extrai texto do PDF com melhor tratamento de quebras de linha"""
     try:
@@ -20,7 +26,7 @@ def extract_text_from_pdf(pdf_file):
         
         for page_num in range(start_page, total_pages):
             page_text = pdf_reader.pages[page_num].extract_text()
-            if page_text:
+            if page_text.strip():
                 # Tratar quebras de linha e hifenização
                 page_text = fix_text_breaks(page_text)
                 text += page_text + "\n"
@@ -35,77 +41,136 @@ def fix_text_breaks(text):
     # Corrigir palavras quebradas por hífen no final da linha
     text = re.sub(r'-\s*\n\s*', '', text)
     
-    # Corrigir quebras de linha no meio de frases
-    text = re.sub(r'([a-z,;])\n([a-z])', r'\1 \2', text)
+    # Corrigir quebras de linha no meio de palavras (sem hífen)
+    # Detectar quando uma linha termina com letra minúscula e a próxima começa com minúscula
+    text = re.sub(r'([a-zçãôêáéíóú])\s*\n\s*([a-zçãôêáéíóú])', r'\1\2', text)
     
-    # Normalizar múltiplas quebras de linha para apenas uma
-    text = re.sub(r'\n{2,}', '\n', text)
+    # Corrigir quebras entre palavras onde uma linha termina com minúscula
+    # e a próxima começa com maiúscula (provável continuação de frase)
+    text = re.sub(r'([a-zçãôêáéíóú.,;:])\s*\n\s*([A-ZÇÃÔÊÁÉÍÓÚ])', r'\1 \2', text)
+    
+    # Normalizar múltiplas quebras de linha
+    text = re.sub(r'\n\s*\n\s*', '\n\n', text)
     
     # Corrigir espaços múltiplos
     text = re.sub(r' {2,}', ' ', text)
     
     return text
 
-
-# ==============================================================================
-# FUNÇÃO CORRIGIDA
-# ==============================================================================
 def identify_clauses(text):
-    """Identifica e extrai todas as cláusulas e subcláusulas de forma robusta."""
+    """Identifica e extrai todas as cláusulas e subcláusulas, ignorando sumários"""
     clauses = []
     
-    # Padrão de regex para encontrar títulos de cláusulas e sub-cláusulas.
-    # Procura por "CLÁUSULA X", "1.1", "1.1.1", etc. no início de uma linha.
-    # A parte (^[A-ZÁÉÍÓÚÇÃÔÊ]) garante que estamos pegando o início de uma sentença.
-    pattern = re.compile(
-        r"^(CLÁUSULA\s+[A-ZÇÃÔÊÁÉÍÓÚ]+\s*–|(?:\d{1,2}\.){1,5}\d*\s+[A-ZÁÉÍÓÚÇÃÔÊ])",
-        re.MULTILINE | re.IGNORECASE
+    # Limpar texto e remover quebras de página
+    text_clean = re.sub(r'Página \d+ de \d+', '', text)
+    text_clean = re.sub(r'\s+', ' ', text_clean)  # Normalizar espaços
+    
+    # Padrões melhorados para identificar cláusulas
+    clause_patterns = [
+        # CLÁUSULA PRIMEIRA, SEGUNDA, etc.
+        r'CLÁUSULA\s+(?:PRIMEIRA|SEGUNDA|TERCEIRA|QUARTA|QUINTA|SEXTA|SÉTIMA|OITAVA|NONA|DÉCIMA|DÉCIMA\s+PRIMEIRA|DÉCIMA\s+SEGUNDA|DÉCIMA\s+TERCEIRA|DÉCIMA\s+QUARTA|DÉCIMA\s+QUINTA|DÉCIMA\s+SEXTA|DÉCIMA\s+SÉTIMA|DÉCIMA\s+OITAVA|DÉCIMA\s+NONA|VIGÉSIMA|VINTE|VINTE\s+E\s+UM|VINTE\s+E\s+DOIS|VINTE\s+E\s+TRÊS)\s*[-–]\s*[A-ZÁÊÔÕÇÃÍ]',
+        # Numeração com pontos: 1.1, 1.1.1, etc.
+        r'\b\d+\.\d+(?:\.\d+)*\s+[A-ZÁÊÔÕÇÃÍ]',
+        # Letras com parênteses: a), b), c), etc.
+        r'\b[a-z]\)\s+[a-záêôõçãí]',
+        # Números romanos: i), ii), iii), etc.
+        r'\b[ivx]+\)\s+[a-záêôõçãí]',
+        # Números simples com parênteses: (1), (2), etc.
+        r'\(\d+\)\s+[A-ZÁÊÔÕÇÃÍ]'
+    ]
+    
+    # Indicadores de sumário para filtrar
+    sumario_indicators = [
+        r'\.{3,}',  # Pontos de continuação
+        r'\b\d+\s*$',  # Números de página isolados
+        r'anexo [iv]+\s*[-–]',
+        r'apêndice [iv]+\s*[-–]',
+        r'página \d+',
+        r'cep \d+',
+        r'cnpj',
+    ]
+    
+    # Dividir texto em blocos maiores para melhor identificação
+    # Primeiro, vamos procurar por todas as cláusulas principais
+    main_clauses = re.finditer(
+        r'CLÁUSULA\s+(?:PRIMEIRA|SEGUNDA|TERCEIRA|QUARTA|QUINTA|SEXTA|SÉTIMA|OITAVA|NONA|DÉCIMA|DÉCIMA\s+PRIMEIRA|DÉCIMA\s+SEGUNDA|DÉCIMA\s+TERCEIRA|DÉCIMA\s+QUARTA|DÉCIMA\s+QUINTA|DÉCIMA\s+SEXTA|DÉCIMA\s+SÉTIMA|DÉCIMA\s+OITAVA|DÉCIMA\s+NONA|VIGÉSIMA|VINTE|VINTE\s+E\s+UM|VINTE\s+E\s+DOIS|VINTE\s+E\s+TRÊS)\s*[-–]\s*([^\n]{10,100})',
+        text_clean, re.IGNORECASE
     )
-
-    # Encontra todas as correspondências (matches) e suas posições no texto
-    matches = list(pattern.finditer(text))
-
-    if not matches:
-        return []
-
-    # Itera sobre as correspondências para fatiar o texto
-    for i, match in enumerate(matches):
-        # O início da cláusula atual é o início da correspondência
+    
+    clause_positions = []
+    for match in main_clauses:
         start_pos = match.start()
-
-        # O fim da cláusula atual é o início da próxima cláusula
-        # Se for a última, vai até o final do texto
-        end_pos = matches[i + 1].start() if i + 1 < len(matches) else len(text)
-
-        # Extrai o bloco de texto completo da cláusula
-        clause_block = text[start_pos:end_pos].strip()
-
-        # Divide o bloco no primeiro \n para separar o título do conteúdo
-        parts = clause_block.split('\n', 1)
-        
-        if len(parts) == 2:
-            clause_title = parts[0].strip()
-            clause_content = parts[1].replace('\n', ' ').strip()
+        end_pos = match.end()
+        title = match.group().strip()
+        clause_positions.append((start_pos, end_pos, title))
+    
+    # Extrair conteúdo de cada cláusula
+    for i, (start_pos, title_end_pos, title) in enumerate(clause_positions):
+        # Determinar onde termina o conteúdo desta cláusula
+        if i + 1 < len(clause_positions):
+            next_start = clause_positions[i + 1][0]
+            content_end = next_start
         else:
-            # Caso não haja quebra de linha (cláusula de uma linha só)
-            clause_title = parts[0].strip()
-            clause_content = ""
-
-        # Remove hífens ou traços no final do título
-        clause_title = re.sub(r'\s*[-–]$', '', clause_title).strip()
-
-        # Adiciona à lista se o conteúdo for relevante
-        if clause_content and len(clause_content) > 10: # Evita cláusulas vazias
-             clauses.append({
-                'numero': clause_title,
-                'conteudo': clause_content
+            content_end = len(text_clean)
+        
+        # Extrair conteúdo da cláusula
+        full_content = text_clean[start_pos:content_end].strip()
+        
+        # Separar título do conteúdo
+        content = text_clean[title_end_pos:content_end].strip()
+        
+        # Verificar se não é sumário
+        is_sumario = any(re.search(indicator, content.lower()) for indicator in sumario_indicators)
+        
+        if not is_sumario and len(content) > 50:  # Conteúdo mínimo
+            # Limpar título
+            clean_title = re.sub(r'\s+', ' ', title).strip()
+            
+            # Limitar o conteúdo se for muito longo (primeiras 2000 caracteres)
+            if len(content) > 2000:
+                content = content[:2000] + "..."
+            
+            clauses.append({
+                'numero': clean_title,
+                'conteudo': content
             })
-
+    
+    # Se não encontrou cláusulas principais, tentar subcláusulas
+    if not clauses:
+        # Buscar por padrões de numeração
+        subsection_pattern = r'(\d+\.\d+(?:\.\d+)*)\s+([A-ZÁÊÔÕÇÃÍ][^\n]{20,200})'
+        subsections = re.finditer(subsection_pattern, text_clean)
+        
+        subsection_positions = []
+        for match in subsections:
+            start_pos = match.start()
+            number = match.group(1)
+            title_part = match.group(2)
+            subsection_positions.append((start_pos, number, title_part))
+        
+        for i, (start_pos, number, title_part) in enumerate(subsection_positions):
+            # Encontrar o final desta subseção
+            if i + 1 < len(subsection_positions):
+                next_start = subsection_positions[i + 1][0]
+                content_end = next_start
+            else:
+                content_end = min(start_pos + 1000, len(text_clean))  # Limitar o conteúdo
+            
+            content = text_clean[start_pos:content_end].strip()
+            
+            # Verificar se não é sumário
+            is_sumario = any(re.search(indicator, content.lower()) for indicator in sumario_indicators)
+            
+            if not is_sumario and len(content) > 50:
+                clean_title = f"{number} - {title_part[:100]}"
+                
+                clauses.append({
+                    'numero': clean_title,
+                    'conteudo': content
+                })
+    
     return clauses
-# ==============================================================================
 
-# ... (O resto do seu código: generate_summary, process_contract, create_excel_file, main) ...
-# ... Pode colar o restante do seu script original aqui sem modificações ...
 def generate_summary(clause_text, api_key):
     """Gera resumo da cláusula usando OpenAI"""
     if not api_key:
@@ -145,14 +210,35 @@ def process_contract(pdf_file, api_key=None):
     if not text:
         return None
     
+    # Mostrar uma amostra do texto extraído para debug
+    st.info(f"📝 Primeiros 500 caracteres do texto extraído:")
+    st.text(text[:500])
+    
     # Identificar cláusulas
     st.info("🔍 Identificando cláusulas...")
     clauses = identify_clauses(text)
     
     if not clauses:
         st.warning("⚠️ Nenhuma cláusula foi encontrada no documento.")
-        st.info("Texto extraído para depuração:")
-        st.text_area("Texto", text[:5000], height=300) # Mostra parte do texto para ajudar a depurar
+        st.info("🔍 Tentando busca mais ampla...")
+        
+        # Busca alternativa mais ampla
+        lines = text.split('\n')
+        potential_clauses = []
+        
+        for line in lines:
+            line = line.strip()
+            if (len(line) > 20 and 
+                (re.search(r'CLÁUSULA|CLAUSULA', line, re.IGNORECASE) or
+                 re.search(r'\d+\.\d+', line) or
+                 re.search(r'ANEXO|APÊNDICE', line, re.IGNORECASE))):
+                potential_clauses.append(line)
+        
+        if potential_clauses:
+            st.info(f"🔍 Encontradas {len(potential_clauses)} possíveis cláusulas:")
+            for clause in potential_clauses[:10]:  # Mostrar apenas as primeiras 10
+                st.text(clause)
+        
         return None
     
     st.success(f"✅ {len(clauses)} cláusulas encontradas!")
