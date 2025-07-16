@@ -7,12 +7,16 @@ import openai
 from io import BytesIO
 import traceback
 import base64
+import os
 
 def get_base64_of_bin_file(bin_file):
     """Converte arquivo binário para base64"""
-    with open(bin_file, 'rb') as f:
-        data = f.read()
-    return base64.b64encode(data).decode()
+    try:
+        with open(bin_file, 'rb') as f:
+            data = f.read()
+        return base64.b64encode(data).decode()
+    except FileNotFoundError:
+        return None
 
 def set_page_config():
     """Configuração da página com cores da CSN"""
@@ -72,6 +76,22 @@ def set_page_config():
     .csn-logo img {
         height: 60px;
         width: auto;
+        background-color: white;
+        padding: 8px;
+        border-radius: 8px;
+    }
+    
+    /* Logo alternativo (texto) */
+    .csn-logo-text {
+        background-color: white;
+        color: #00529C;
+        padding: 10px 20px;
+        border-radius: 8px;
+        font-size: 1.8rem;
+        font-weight: 900;
+        letter-spacing: 2px;
+        margin-bottom: 1rem;
+        text-align: center;
     }
     
     /* Botões */
@@ -356,16 +376,29 @@ def create_excel_file(processed_clauses):
 def main():
     set_page_config()
     
-    # Header personalizado com logo
-    st.markdown("""
-    <div class="csn-header">
-        <div class="csn-logo">
-            <img src="data:image/png;base64,{}" alt="CSN Logo">
+    # Tentar carregar o logo da Wikipedia
+    logo_path = '/home/ubuntu/csn_logo_wikipedia.png'
+    logo_base64 = get_base64_of_bin_file(logo_path)
+    
+    # Header personalizado com logo ou texto alternativo
+    if logo_base64:
+        st.markdown(f"""
+        <div class="csn-header">
+            <div class="csn-logo">
+                <img src="data:image/png;base64,{logo_base64}" alt="CSN Logo">
+            </div>
+            <h1 class="csn-title">Processador de Cláusulas Contratuais</h1>
+            <p class="csn-subtitle">Extração e resumo de cláusulas numeradas de contratos</p>
         </div>
-        <h1 class="csn-title">Processador de Cláusulas Contratuais</h1>
-        <p class="csn-subtitle">Extração e resumo de cláusulas numeradas de contratos</p>
-    </div>
-    """.format(get_base64_of_bin_file('/home/ubuntu/csn_logo.png')), unsafe_allow_html=True)
+        """, unsafe_allow_html=True)
+    else:
+        st.markdown("""
+        <div class="csn-header">
+            <div class="csn-logo-text">CSN</div>
+            <h1 class="csn-title">Processador de Cláusulas Contratuais</h1>
+            <p class="csn-subtitle">Extração e resumo de cláusulas numeradas de contratos</p>
+        </div>
+        """, unsafe_allow_html=True)
     
     # Sidebar para configurações
     with st.sidebar:
