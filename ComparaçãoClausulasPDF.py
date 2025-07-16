@@ -56,7 +56,7 @@ def identify_clauses(text):
     # Palavras que indicam definitivamente sumário/índice
     sumario_indicators = [
         '\.{3,}',  # Pontos de continuação (...)
-        '\d+
+        '\d+']
 
 def generate_summary(clause_text, api_key):
     """Gera resumo da cláusula usando OpenAI"""
