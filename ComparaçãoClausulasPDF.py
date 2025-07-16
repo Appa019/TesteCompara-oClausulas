@@ -87,6 +87,9 @@ def identify_clauses(text):
             
             # Remove pontos e traços desnecessários no final
             clause_content = re.sub(r'\s*[.]{3,}.*$', '', clause_content).strip()
+            
+            # NOVA FUNCIONALIDADE: Remove a repetição do número da cláusula no início do conteúdo
+            clause_content = remove_clause_number_from_content(clause_content, clause_number)
 
             # Adiciona à lista se o conteúdo for relevante
             if clause_content and len(clause_content) > 10:
@@ -112,6 +115,26 @@ def extract_clause_number(text):
     
     # Se não conseguir extrair, retorna os primeiros 50 caracteres
     return text[:50].strip()
+
+def remove_clause_number_from_content(content, clause_number):
+    """Remove a repetição do número da cláusula no início do conteúdo"""
+    
+    # Escapar caracteres especiais do regex no número da cláusula
+    escaped_number = re.escape(clause_number)
+    
+    # Para cláusulas principais, remove "CLÁUSULA X – " do início
+    if clause_number.startswith("CLÁUSULA"):
+        # Remove padrões como "CLÁUSULA PRIMEIRA –", "CLÁUSULA SEGUNDA – OBJETO", etc.
+        pattern = rf'^{escaped_number}\s*–\s*[A-ZÁÉÍÓÚÇÃÔÊ\s]*\s*'
+        content = re.sub(pattern, '', content, flags=re.IGNORECASE).strip()
+    
+    # Para subcláusulas numeradas, remove apenas o número do início
+    else:
+        # Remove padrões como "1.1.1 ", "1.1.1.1 ", etc.
+        pattern = rf'^{escaped_number}\s+'
+        content = re.sub(pattern, '', content).strip()
+    
+    return content
 
 def generate_summary(clause_text, api_key):
     """Gera resumo da cláusula usando OpenAI"""
@@ -177,7 +200,7 @@ def process_contract(pdf_file, api_key=None):
             
             processed_clauses.append({
                 'Clausula': clause['numero'],  # Apenas o número
-                'Transcricao': clause['conteudo'],  # Texto completo
+                'Transcricao': clause['conteudo'],  # Texto completo SEM repetição do número
                 'Resumo': summary
             })
             
@@ -194,14 +217,14 @@ def process_contract(pdf_file, api_key=None):
         for clause in clauses:
             processed_clauses.append({
                 'Clausula': clause['numero'],  # Apenas o número
-                'Transcricao': clause['conteudo'],  # Texto completo
+                'Transcricao': clause['conteudo'],  # Texto completo SEM repetição do número
                 'Resumo': ''
             })
     
     return processed_clauses
 
 def create_excel_file(processed_clauses):
-    """Cria arquivo Excel com as cláusulas processadas"""
+    """Cria arquivo Excel com as cláusulas processadas e autofit das colunas"""
     df = pd.DataFrame(processed_clauses)
     
     # Criar arquivo Excel em memória
@@ -213,26 +236,53 @@ def create_excel_file(processed_clauses):
         workbook = writer.book
         worksheet = writer.sheets['Clausulas']
         
-        # Definir larguras das colunas
-        worksheet.set_column('A:A', 25)  # Clausula (número)
-        worksheet.set_column('B:B', 100)  # Transcricao (texto completo)
-        worksheet.set_column('C:C', 50)  # Resumo
-        
         # Formatação do cabeçalho
         header_format = workbook.add_format({
             'bold': True,
             'bg_color': '#D7E4BC',
-            'border': 1
+            'border': 1,
+            'align': 'center',
+            'valign': 'vcenter'
         })
         
         # Formatação para quebra de texto
-        wrap_format = workbook.add_format({'text_wrap': True, 'valign': 'top'})
+        wrap_format = workbook.add_format({
+            'text_wrap': True, 
+            'valign': 'top',
+            'border': 1
+        })
         
+        # Formatação para a coluna de número da cláusula
+        number_format = workbook.add_format({
+            'align': 'center',
+            'valign': 'vcenter',
+            'border': 1,
+            'bold': True
+        })
+        
+        # Escrever cabeçalhos
         for col_num, value in enumerate(df.columns.values):
             worksheet.write(0, col_num, value, header_format)
         
-        # Aplicar quebra de texto nas colunas B e C
-        worksheet.set_column('B:C', None, wrap_format)
+        # AUTOFIT DAS COLUNAS baseado no conteúdo
+        
+        # Calcular largura ideal para coluna A (Clausula)
+        max_clausula_len = max([len(str(row['Clausula'])) for row in processed_clauses]) + 2
+        max_clausula_len = min(max_clausula_len, 30)  # Máximo de 30 caracteres
+        worksheet.set_column('A:A', max_clausula_len, number_format)
+        
+        # Para coluna B (Transcricao) - usar largura fixa otimizada para leitura
+        worksheet.set_column('B:B', 80, wrap_format)
+        
+        # Para coluna C (Resumo) - usar largura fixa otimizada
+        worksheet.set_column('C:C', 60, wrap_format)
+        
+        # Ajustar altura das linhas para melhor visualização
+        for row_num in range(1, len(df) + 1):
+            # Calcular altura baseada no conteúdo da transcrição
+            content_length = len(str(df.iloc[row_num-1]['Transcricao']))
+            estimated_height = max(30, min(content_length // 80 * 15, 200))  # Entre 30 e 200
+            worksheet.set_row(row_num, estimated_height)
     
     output.seek(0)
     return output
