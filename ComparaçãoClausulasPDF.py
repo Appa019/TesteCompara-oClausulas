@@ -31,8 +31,8 @@ def set_page_config():
         background-color: #f8f9fa;
     }
     
-    /* Header personalizado */
-    .csn-header {
+    /* Header principal */
+    .main-header {
         background: linear-gradient(90deg, #00529C 0%, #1e6bb8 100%);
         padding: 1.5rem 2rem;
         border-radius: 10px;
@@ -40,34 +40,37 @@ def set_page_config():
         box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
     }
     
-    .csn-title {
+    .logo-container {
+        display: flex;
+        align-items: center;
+        gap: 20px;
+    }
+    
+    .logo-img {
+        height: 80px;
+        width: auto;
+        background-color: white;
+        padding: 10px;
+        border-radius: 8px;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    }
+    
+    .header-text h1 {
         color: white;
         font-size: 2.2rem;
         font-weight: 700;
         margin: 0;
-        text-align: center;
     }
     
-    .csn-subtitle {
+    .header-text p {
         color: #e8f4fd;
         font-size: 1.1rem;
         margin: 0.5rem 0 0 0;
-        text-align: center;
     }
     
-    /* Logo CSN em texto estilizado */
-    .csn-logo-text {
-        background-color: white;
-        color: #00529C;
-        padding: 10px 20px;
-        border-radius: 8px;
-        font-size: 1.8rem;
-        font-weight: 900;
-        letter-spacing: 2px;
-        margin: 0 auto 1rem auto;
-        text-align: center;
-        width: fit-content;
-        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    .header-text small {
+        font-size: 0.9rem;
+        color: #d1ecf1;
     }
     
     /* Botões */
@@ -122,6 +125,18 @@ def set_page_config():
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
     header {visibility: hidden;}
+    
+    /* Responsivo */
+    @media (max-width: 768px) {
+        .logo-container {
+            flex-direction: column;
+            text-align: center;
+        }
+        
+        .header-text h1 {
+            font-size: 1.8rem;
+        }
+    }
     </style>
     """, unsafe_allow_html=True)
 
@@ -352,12 +367,18 @@ def create_excel_file(processed_clauses):
 def main():
     set_page_config()
     
-    # Header personalizado com logo em texto
+    # Cabeçalho principal com logo da CSN
     st.markdown("""
-    <div class="csn-header">
-        <div class="csn-logo-text">CSN</div>
-        <h1 class="csn-title">Processador de Cláusulas Contratuais</h1>
-        <p class="csn-subtitle">Extração e resumo de cláusulas numeradas de contratos</p>
+    <div class="main-header">
+        <div class="logo-container">
+            <img src="https://upload.wikimedia.org/wikipedia/pt/e/eb/Companhia_Sider%C3%BArgica_Nacional.png" 
+                 alt="Logo CSN" class="logo-img">
+            <div class="header-text">
+                <h1>Processador de Cláusulas Contratuais</h1>
+                <p>Extração e resumo de cláusulas numeradas de contratos</p>
+                <p><small>NTS | TAG | TBG | Processamento Automatizado</small></p>
+            </div>
+        </div>
     </div>
     """, unsafe_allow_html=True)
     
