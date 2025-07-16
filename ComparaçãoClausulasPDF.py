@@ -6,6 +6,128 @@ import time
 import openai
 from io import BytesIO
 import traceback
+import base64
+
+def get_base64_of_bin_file(bin_file):
+    """Converte arquivo binário para base64"""
+    with open(bin_file, 'rb') as f:
+        data = f.read()
+    return base64.b64encode(data).decode()
+
+def set_page_config():
+    """Configuração da página com cores da CSN"""
+    st.set_page_config(
+        page_title="Processador de Cláusulas - CSN",
+        page_icon="📄",
+        layout="wide",
+        initial_sidebar_state="expanded"
+    )
+    
+    # CSS customizado com cores da CSN
+    st.markdown("""
+    <style>
+    .main {
+        padding-top: 2rem;
+    }
+    
+    .stApp > header {
+        background-color: transparent;
+    }
+    
+    .stApp {
+        background-color: #f8f9fa;
+    }
+    
+    /* Header personalizado */
+    .csn-header {
+        background: linear-gradient(90deg, #00529C 0%, #1e6bb8 100%);
+        padding: 1.5rem 2rem;
+        border-radius: 10px;
+        margin-bottom: 2rem;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    }
+    
+    .csn-title {
+        color: white;
+        font-size: 2.2rem;
+        font-weight: 700;
+        margin: 0;
+        text-align: center;
+    }
+    
+    .csn-subtitle {
+        color: #e8f4fd;
+        font-size: 1.1rem;
+        margin: 0.5rem 0 0 0;
+        text-align: center;
+    }
+    
+    /* Logo */
+    .csn-logo {
+        display: flex;
+        justify-content: center;
+        margin-bottom: 1rem;
+    }
+    
+    .csn-logo img {
+        height: 60px;
+        width: auto;
+    }
+    
+    /* Botões */
+    .stButton > button {
+        background-color: #00529C;
+        color: white;
+        border: none;
+        border-radius: 5px;
+        padding: 0.5rem 1rem;
+        font-weight: 600;
+        transition: background-color 0.3s;
+    }
+    
+    .stButton > button:hover {
+        background-color: #1e6bb8;
+    }
+    
+    /* Sidebar */
+    .css-1d391kg {
+        background-color: #f8f9fa;
+    }
+    
+    /* Upload area */
+    .uploadedFile {
+        border: 2px dashed #00529C;
+        border-radius: 10px;
+        padding: 2rem;
+        text-align: center;
+        background-color: white;
+    }
+    
+    /* Success/Info messages */
+    .stSuccess {
+        background-color: #d4edda;
+        border-color: #c3e6cb;
+        color: #155724;
+    }
+    
+    .stInfo {
+        background-color: #d1ecf1;
+        border-color: #bee5eb;
+        color: #0c5460;
+    }
+    
+    /* Dataframe */
+    .stDataFrame {
+        border: 1px solid #dee2e6;
+        border-radius: 5px;
+    }
+    
+    /* Hide Streamlit branding */
+    #MainMenu {visibility: hidden;}
+    footer {visibility: hidden;}
+    header {visibility: hidden;}
+    </style>
+    """, unsafe_allow_html=True)
 
 def extract_text_from_pdf(pdf_file):
     """Extrai texto do PDF com melhor tratamento de quebras de linha"""
@@ -46,51 +168,34 @@ def fix_text_breaks(text):
     return text
 
 def identify_clauses(text):
-    """VERSÃO CORRIGIDA - Identifica e extrai APENAS cláusulas numeradas (ignora cláusulas principais)."""
+    """Identifica e extrai cláusulas numeradas"""
     clauses = []
     
-    # REGEX SIMPLIFICADO - APENAS CLÁUSULAS NUMERADAS
-    # Padrões como: 1.1, 1.1.1, 1.1.1.1, 2.1, 3.2.1, etc.
-    # Ignora completamente "CLÁUSULA PRIMEIRA", "CLÁUSULA SEGUNDA", etc.
     pattern = re.compile(
         r"^(\d{1,2}(?:\.\d{1,2}){1,4}\.?)\s+([A-ZÁÉÍÓÚÇÃÔÊ])",
         re.MULTILINE
     )
 
-    # Encontra todas as correspondências (matches) e suas posições no texto
     matches = list(pattern.finditer(text))
 
     if not matches:
         return []
 
-    # Itera sobre as correspondências para fatiar o texto
     for i, match in enumerate(matches):
-        # O início da cláusula atual é o início da correspondência
         start_pos = match.start()
-
-        # O fim da cláusula atual é o início da próxima cláusula
-        # Se for a última, vai até o final do texto
         end_pos = matches[i + 1].start() if i + 1 < len(matches) else len(text)
 
-        # Extrai o bloco de texto completo da cláusula
         clause_block = text[start_pos:end_pos].strip()
-
-        # Extrai o número da cláusula (grupo 1 do regex)
         clause_number = match.group(1).strip()
         
         # Remove o número da cláusula do início do conteúdo
         clause_content = clause_block
         clause_content = re.sub(rf'^{re.escape(clause_number)}\s*', '', clause_content).strip()
         
-        # CORREÇÃO PRINCIPAL: Remover qualquer padrão de cláusula que apareça no final do texto
-        # Isso evita que o número da próxima cláusula fique misturado no conteúdo
-        
-        # Procurar por padrões de cláusulas no final do texto
-        # Padrão: número.número.número seguido de espaço e letra maiúscula
+        # Remove qualquer padrão de cláusula que apareça no final do texto
         end_pattern = re.search(r'\s+(\d{1,2}(?:\.\d{1,2}){1,4}\.?)\s+([A-ZÁÉÍÓÚÇÃÔÊ].*?)$', clause_content, re.DOTALL)
         
         if end_pattern:
-            # Remove tudo a partir do padrão encontrado no final
             clause_content = clause_content[:clause_content.rfind(end_pattern.group(0))].strip()
         
         # Substitui quebras de linha por espaços
@@ -99,14 +204,10 @@ def identify_clauses(text):
         # Remove espaços múltiplos
         clause_content = re.sub(r'\s+', ' ', clause_content).strip()
         
-        # LIMPEZA ADICIONAL: Remover fragmentos de texto que claramente pertencem à próxima cláusula
-        # Procurar por padrões como "Página X de Y" que podem ter ficado no meio
+        # Remove fragmentos como "Página X de Y"
         clause_content = re.sub(r'\s*Página\s+\d+\s+de\s+\d+\s*', ' ', clause_content)
-        
-        # Remover espaços múltiplos novamente após limpeza
         clause_content = re.sub(r'\s+', ' ', clause_content).strip()
 
-        # Adiciona à lista se o conteúdo for relevante
         if clause_content and len(clause_content) > 10:
             clauses.append({
                 'numero': clause_number,
@@ -131,7 +232,7 @@ def generate_summary(clause_text, api_key):
         Resumo:"""
         
         response = client.chat.completions.create(
-            model="gpt-4.1-nano",  # Modelo atualizado para GPT-4.1-nano
+            model="gpt-4.1-nano",
             messages=[
                 {"role": "user", "content": prompt}
             ],
@@ -148,77 +249,70 @@ def process_contract(pdf_file, api_key=None):
     """Processa o contrato completo"""
     
     # Extrair texto do PDF
-    st.info("📄 Extraindo texto do PDF (a partir da página 4)...")
+    st.info("Extraindo texto do PDF...")
     text = extract_text_from_pdf(pdf_file)
     
     if not text:
         return None
     
     # Identificar cláusulas
-    st.info("🔍 Identificando cláusulas numeradas (versão corrigida)...")
+    st.info("Identificando cláusulas numeradas...")
     clauses = identify_clauses(text)
     
     if not clauses:
-        st.warning("⚠️ Nenhuma cláusula numerada foi encontrada no documento.")
-        st.info("Texto extraído para depuração:")
-        st.text_area("Texto", text[:5000], height=300)
+        st.warning("Nenhuma cláusula numerada foi encontrada no documento.")
         return None
     
-    st.success(f"✅ {len(clauses)} cláusulas numeradas encontradas!")
+    st.success(f"{len(clauses)} cláusulas numeradas encontradas!")
     
     # Processar cláusulas
     processed_clauses = []
     
     if api_key:
-        st.info("🤖 Gerando resumos com IA (GPT-4.1-nano)...")
+        st.info("Gerando resumos com IA...")
         progress_bar = st.progress(0)
         
         for i, clause in enumerate(clauses):
-            # Gerar resumo
             summary = generate_summary(clause['conteudo'], api_key)
             
             processed_clauses.append({
-                'Clausula': clause['numero'],  # Apenas o número
-                'Transcricao': clause['conteudo'],  # Texto completo limpo
+                'Clausula': clause['numero'],
+                'Transcricao': clause['conteudo'],
                 'Resumo': summary
             })
             
-            # Atualizar progresso
             progress = (i + 1) / len(clauses)
             progress_bar.progress(progress)
-            
-            # Rate limiting reduzido para GPT-4.1-nano (mais rápido)
             time.sleep(0.2)
             
         progress_bar.empty()
     else:
-        st.info("📝 Processando sem resumos (chave API não fornecida)...")
+        st.info("Processando sem resumos...")
         for clause in clauses:
             processed_clauses.append({
-                'Clausula': clause['numero'],  # Apenas o número
-                'Transcricao': clause['conteudo'],  # Texto completo limpo
+                'Clausula': clause['numero'],
+                'Transcricao': clause['conteudo'],
                 'Resumo': ''
             })
     
     return processed_clauses
 
 def create_excel_file(processed_clauses):
-    """Cria arquivo Excel com as cláusulas processadas e autofit das colunas"""
+    """Cria arquivo Excel com as cláusulas processadas"""
     df = pd.DataFrame(processed_clauses)
     
-    # Criar arquivo Excel em memória
     output = BytesIO()
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
         df.to_excel(writer, sheet_name='Clausulas', index=False)
         
-        # Formatação
         workbook = writer.book
         worksheet = writer.sheets['Clausulas']
         
         # Formatação do cabeçalho
         header_format = workbook.add_format({
             'bold': True,
-            'bg_color': '#D7E4BC',
+            'bg_color': '#00529C',
+            'font_color': 'white',
             'border': 1,
             'align': 'center',
             'valign': 'vcenter'
@@ -243,108 +337,94 @@ def create_excel_file(processed_clauses):
         for col_num, value in enumerate(df.columns.values):
             worksheet.write(0, col_num, value, header_format)
         
-        # AUTOFIT DAS COLUNAS baseado no conteúdo
-        
-        # Calcular largura ideal para coluna A (Clausula)
+        # Configurar colunas
         max_clausula_len = max([len(str(row['Clausula'])) for row in processed_clauses]) + 2
-        max_clausula_len = min(max_clausula_len, 20)  # Máximo de 20 caracteres para números
+        max_clausula_len = min(max_clausula_len, 20)
         worksheet.set_column('A:A', max_clausula_len, number_format)
-        
-        # Para coluna B (Transcricao) - usar largura fixa otimizada para leitura
         worksheet.set_column('B:B', 80, wrap_format)
-        
-        # Para coluna C (Resumo) - usar largura fixa otimizada
         worksheet.set_column('C:C', 60, wrap_format)
         
-        # Ajustar altura das linhas para melhor visualização
+        # Ajustar altura das linhas
         for row_num in range(1, len(df) + 1):
-            # Calcular altura baseada no conteúdo da transcrição
             content_length = len(str(df.iloc[row_num-1]['Transcricao']))
-            estimated_height = max(30, min(content_length // 80 * 15, 200))  # Entre 30 e 200
+            estimated_height = max(30, min(content_length // 80 * 15, 200))
             worksheet.set_row(row_num, estimated_height)
     
     output.seek(0)
     return output
 
-# Interface principal
 def main():
-    st.title("📄 Processador de Cláusulas Contratuais")
-    st.markdown("**Plataforma para extração e resumo de cláusulas numeradas de contratos NTS, TAG e TBG**")
+    set_page_config()
     
-    # Aviso sobre as melhorias
-    st.success("🔧 **VERSÃO OTIMIZADA**: Correção de extração + GPT-4.1-nano (mais rápido e econômico)")
+    # Header personalizado com logo
+    st.markdown("""
+    <div class="csn-header">
+        <div class="csn-logo">
+            <img src="data:image/png;base64,{}" alt="CSN Logo">
+        </div>
+        <h1 class="csn-title">Processador de Cláusulas Contratuais</h1>
+        <p class="csn-subtitle">Extração e resumo de cláusulas numeradas de contratos</p>
+    </div>
+    """.format(get_base64_of_bin_file('/home/ubuntu/csn_logo.png')), unsafe_allow_html=True)
     
     # Sidebar para configurações
     with st.sidebar:
-        st.header("⚙️ Configurações")
+        st.header("Configurações")
         
-        # Campo para API Key
         api_key = st.text_input(
-            "🔑 Chave API OpenAI (opcional)",
+            "Chave API OpenAI (opcional)",
             type="password",
-            help="Necessária apenas para gerar resumos. Deixe vazio para processar sem resumos."
+            help="Necessária apenas para gerar resumos"
         )
         
         if api_key:
-            st.success("✅ Chave API fornecida - resumos serão gerados")
-            st.info("🚀 Usando GPT-4.1-nano (mais rápido e econômico)")
+            st.success("Chave API fornecida")
         else:
-            st.info("ℹ️ Sem chave API - processamento sem resumos")
+            st.info("Processamento sem resumos")
         
         st.markdown("---")
         st.markdown("**Formatos suportados:** PDF")
         st.markdown("**Tipos de contrato:** NTS, TAG, TBG")
-        st.markdown("**Foco:** Apenas cláusulas numeradas (ex: 1.1, 1.1.1)")
-        
-        st.markdown("---")
-        st.markdown("**🔧 Melhorias:**")
-        st.markdown("• ✅ Correção de cláusulas misturadas")
-        st.markdown("• 🚀 GPT-4.1-nano (mais rápido)")
-        st.markdown("• 💰 Custo reduzido (75% menor)")
     
     # Upload do arquivo
-    st.header("📤 Upload do Contrato")
+    st.header("Upload do Contrato")
     uploaded_file = st.file_uploader(
         "Selecione o arquivo PDF do contrato",
-        type=['pdf'],
-        help="Faça upload de um contrato em formato PDF"
+        type=['pdf']
     )
     
     if uploaded_file is not None:
-        # Mostrar informações do arquivo
-        st.info(f"📁 Arquivo: {uploaded_file.name} ({uploaded_file.size:,} bytes)")
+        st.info(f"Arquivo: {uploaded_file.name} ({uploaded_file.size:,} bytes)")
         
-        # Botão para processar
-        if st.button("🚀 Processar Contrato", type="primary"):
+        if st.button("Processar Contrato", type="primary"):
             try:
                 with st.spinner("Processando contrato..."):
                     processed_clauses = process_contract(uploaded_file, api_key)
                 
                 if processed_clauses:
-                    st.success("✅ Processamento concluído!")
+                    st.success("Processamento concluído!")
                     
-                    # Mostrar preview dos dados
-                    st.header("👀 Preview dos Resultados")
+                    # Preview dos dados
+                    st.header("Preview dos Resultados")
                     df_preview = pd.DataFrame(processed_clauses)
                     st.dataframe(df_preview.head(10), use_container_width=True)
                     
                     if len(processed_clauses) > 10:
                         st.info(f"Mostrando 10 de {len(processed_clauses)} cláusulas encontradas.")
                     
-                    # Gerar e oferecer download do Excel
+                    # Download do Excel
                     excel_file = create_excel_file(processed_clauses)
                     
-                    st.header("💾 Download")
+                    st.header("Download")
                     st.download_button(
-                        label="📥 Baixar Excel com Cláusulas (Versão Otimizada)",
+                        label="Baixar Excel com Cláusulas",
                         data=excel_file,
-                        file_name="clausulas_numeradas_otimizado.xlsx",
+                        file_name="clausulas_numeradas.xlsx",
                         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                     )
                 
             except Exception as e:
-                st.error(f"❌ Erro durante o processamento: {str(e)}")
-                st.code(traceback.format_exc())
+                st.error(f"Erro durante o processamento: {str(e)}")
 
 if __name__ == "__main__":
     main()
