@@ -46,15 +46,15 @@ def fix_text_breaks(text):
     return text
 
 def identify_clauses(text):
-    """Identifica e extrai todas as cláusulas e subcláusulas de forma robusta."""
+    """Identifica e extrai APENAS cláusulas numeradas (ignora cláusulas principais)."""
     clauses = []
     
-    # REGEX MELHORADO para capturar todos os tipos de cláusulas
-    # 1. Cláusulas principais: CLÁUSULA + qualquer palavra em maiúscula + opcional "–"
-    # 2. Subcláusulas numeradas: padrões como 1.1, 1.1.1, etc.
+    # REGEX SIMPLIFICADO - APENAS CLÁUSULAS NUMERADAS
+    # Padrões como: 1.1, 1.1.1, 1.1.1.1, 2.1, 3.2.1, etc.
+    # Ignora completamente "CLÁUSULA PRIMEIRA", "CLÁUSULA SEGUNDA", etc.
     pattern = re.compile(
-        r"^(CLÁUSULA\s+[A-ZÇÃÔÊÁÉÍÓÚÀÂ]+(?:\s+[A-ZÇÃÔÊÁÉÍÓÚÀÂ]+)*\s*(?:–|—)?|(?:\d{1,2}\.){1,5}\d*\s+[A-ZÁÉÍÓÚÇÃÔÊ])",
-        re.MULTILINE | re.IGNORECASE
+        r"^(\d{1,2}(?:\.\d{1,2}){1,4}\.?)\s+([A-ZÁÉÍÓÚÇÃÔÊ])",
+        re.MULTILINE
     )
 
     # Encontra todas as correspondências (matches) e suas posições no texto
@@ -75,74 +75,29 @@ def identify_clauses(text):
         # Extrai o bloco de texto completo da cláusula
         clause_block = text[start_pos:end_pos].strip()
 
-        # Divide o bloco no primeiro \n para separar o título do conteúdo
-        parts = clause_block.split('\n', 1)
+        # Extrai o número da cláusula (grupo 1 do regex)
+        clause_number = match.group(1).strip()
         
-        if len(parts) >= 1:
-            first_line = parts[0].strip()
-            
-            # Extrair apenas o número/identificador da cláusula
-            clause_number = extract_clause_number(first_line)
-            
-            # O conteúdo completo da cláusula é todo o bloco (incluindo a primeira linha)
-            clause_content = clause_block.replace('\n', ' ').strip()
-            
-            # Remove pontos e traços desnecessários no final
-            clause_content = re.sub(r'\s*[.]{3,}.*$', '', clause_content).strip()
-            
-            # Remove a repetição do número da cláusula no início do conteúdo
-            clause_content = remove_clause_number_from_content(clause_content, clause_number)
+        # Remove o número da cláusula do início do conteúdo
+        clause_content = clause_block
+        
+        # Remove o número do início do conteúdo
+        clause_content = re.sub(rf'^{re.escape(clause_number)}\s*', '', clause_content).strip()
+        
+        # Substitui quebras de linha por espaços
+        clause_content = clause_content.replace('\n', ' ').strip()
+        
+        # Remove espaços múltiplos
+        clause_content = re.sub(r'\s+', ' ', clause_content).strip()
 
-            # Adiciona à lista se o conteúdo for relevante
-            if clause_content and len(clause_content) > 10:
-                clauses.append({
-                    'numero': clause_number,
-                    'conteudo': clause_content
-                })
+        # Adiciona à lista se o conteúdo for relevante
+        if clause_content and len(clause_content) > 10:
+            clauses.append({
+                'numero': clause_number,
+                'conteudo': clause_content
+            })
 
     return clauses
-
-def extract_clause_number(text):
-    """Extrai apenas o número ou identificador da cláusula do texto"""
-    
-    # Para cláusulas principais - REGEX MELHORADO
-    # Captura "CLÁUSULA" + uma ou mais palavras em maiúscula
-    clausula_match = re.match(r'^(CLÁUSULA\s+[A-ZÇÃÔÊÁÉÍÓÚÀÂ]+(?:\s+[A-ZÇÃÔÊÁÉÍÓÚÀÂ]+)*)', text, re.IGNORECASE)
-    if clausula_match:
-        return clausula_match.group(1).strip()
-    
-    # Para subcláusulas numeradas (ex: "1.1.1", "1.1.1.1")
-    numero_match = re.match(r'^((?:\d{1,2}\.){1,5}\d*)', text)
-    if numero_match:
-        return numero_match.group(1).strip()
-    
-    # Se não conseguir extrair, retorna os primeiros 50 caracteres
-    return text[:50].strip()
-
-def remove_clause_number_from_content(content, clause_number):
-    """Remove a repetição do número da cláusula no início do conteúdo"""
-    
-    # Escapar caracteres especiais do regex no número da cláusula
-    escaped_number = re.escape(clause_number)
-    
-    # Para cláusulas principais, remove "CLÁUSULA X – " do início
-    if clause_number.startswith("CLÁUSULA"):
-        # REGEX MELHORADO para remover o título completo da cláusula
-        # Remove padrões como "CLÁUSULA PRIMEIRA –", "CLÁUSULA SEGUNDA – OBJETO", etc.
-        pattern = rf'^{escaped_number}\s*(?:–|—)?\s*[A-ZÁÉÍÓÚÇÃÔÊÀÂ\s,]*?\s*'
-        content = re.sub(pattern, '', content, flags=re.IGNORECASE).strip()
-        
-        # Se ainda sobrou texto do título, fazer uma limpeza adicional
-        # Remove qualquer texto em maiúsculas no início até encontrar texto normal
-        content = re.sub(r'^[A-ZÁÉÍÓÚÇÃÔÊÀÂ\s,–—\.]+\s*', '', content).strip()
-    
-    # Para subcláusulas numeradas, remove apenas o número do início
-    else:
-        # Remove padrões como "1.1.1 ", "1.1.1.1 ", etc.
-        pattern = rf'^{escaped_number}\s+'
-        content = re.sub(pattern, '', content).strip()
-    
-    return content
 
 def generate_summary(clause_text, api_key):
     """Gera resumo da cláusula usando OpenAI"""
@@ -184,16 +139,16 @@ def process_contract(pdf_file, api_key=None):
         return None
     
     # Identificar cláusulas
-    st.info("🔍 Identificando cláusulas...")
+    st.info("🔍 Identificando cláusulas numeradas (ignorando cláusulas principais)...")
     clauses = identify_clauses(text)
     
     if not clauses:
-        st.warning("⚠️ Nenhuma cláusula foi encontrada no documento.")
+        st.warning("⚠️ Nenhuma cláusula numerada foi encontrada no documento.")
         st.info("Texto extraído para depuração:")
         st.text_area("Texto", text[:5000], height=300)
         return None
     
-    st.success(f"✅ {len(clauses)} cláusulas encontradas!")
+    st.success(f"✅ {len(clauses)} cláusulas numeradas encontradas!")
     
     # Processar cláusulas
     processed_clauses = []
@@ -208,7 +163,7 @@ def process_contract(pdf_file, api_key=None):
             
             processed_clauses.append({
                 'Clausula': clause['numero'],  # Apenas o número
-                'Transcricao': clause['conteudo'],  # Texto completo SEM repetição do número
+                'Transcricao': clause['conteudo'],  # Texto completo limpo
                 'Resumo': summary
             })
             
@@ -225,7 +180,7 @@ def process_contract(pdf_file, api_key=None):
         for clause in clauses:
             processed_clauses.append({
                 'Clausula': clause['numero'],  # Apenas o número
-                'Transcricao': clause['conteudo'],  # Texto completo SEM repetição do número
+                'Transcricao': clause['conteudo'],  # Texto completo limpo
                 'Resumo': ''
             })
     
@@ -276,7 +231,7 @@ def create_excel_file(processed_clauses):
         
         # Calcular largura ideal para coluna A (Clausula)
         max_clausula_len = max([len(str(row['Clausula'])) for row in processed_clauses]) + 2
-        max_clausula_len = min(max_clausula_len, 35)  # Máximo de 35 caracteres
+        max_clausula_len = min(max_clausula_len, 20)  # Máximo de 20 caracteres para números
         worksheet.set_column('A:A', max_clausula_len, number_format)
         
         # Para coluna B (Transcricao) - usar largura fixa otimizada para leitura
@@ -298,7 +253,7 @@ def create_excel_file(processed_clauses):
 # Interface principal
 def main():
     st.title("📄 Processador de Cláusulas Contratuais")
-    st.markdown("**Plataforma para extração e resumo de cláusulas de contratos NTS, TAG e TBG**")
+    st.markdown("**Plataforma para extração e resumo de cláusulas numeradas de contratos NTS, TAG e TBG**")
     
     # Sidebar para configurações
     with st.sidebar:
@@ -319,6 +274,7 @@ def main():
         st.markdown("---")
         st.markdown("**Formatos suportados:** PDF")
         st.markdown("**Tipos de contrato:** NTS, TAG, TBG")
+        st.markdown("**Foco:** Apenas cláusulas numeradas (ex: 1.1, 1.1.1)")
     
     # Upload do arquivo
     st.header("📤 Upload do Contrato")
@@ -356,7 +312,7 @@ def main():
                     st.download_button(
                         label="📥 Baixar Excel com Cláusulas",
                         data=excel_file,
-                        file_name="resumoclausulas.xlsx",
+                        file_name="clausulas_numeradas.xlsx",
                         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                     )
                 
