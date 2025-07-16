@@ -49,9 +49,11 @@ def identify_clauses(text):
     """Identifica e extrai todas as cláusulas e subcláusulas de forma robusta."""
     clauses = []
     
-    # Padrão de regex para encontrar títulos de cláusulas e sub-cláusulas.
+    # REGEX MELHORADO para capturar todos os tipos de cláusulas
+    # 1. Cláusulas principais: CLÁUSULA + qualquer palavra em maiúscula + opcional "–"
+    # 2. Subcláusulas numeradas: padrões como 1.1, 1.1.1, etc.
     pattern = re.compile(
-        r"^(CLÁUSULA\s+[A-ZÇÃÔÊÁÉÍÓÚ]+\s*–|(?:\d{1,2}\.){1,5}\d*\s+[A-ZÁÉÍÓÚÇÃÔÊ])",
+        r"^(CLÁUSULA\s+[A-ZÇÃÔÊÁÉÍÓÚÀÂ]+(?:\s+[A-ZÇÃÔÊÁÉÍÓÚÀÂ]+)*\s*(?:–|—)?|(?:\d{1,2}\.){1,5}\d*\s+[A-ZÁÉÍÓÚÇÃÔÊ])",
         re.MULTILINE | re.IGNORECASE
     )
 
@@ -88,7 +90,7 @@ def identify_clauses(text):
             # Remove pontos e traços desnecessários no final
             clause_content = re.sub(r'\s*[.]{3,}.*$', '', clause_content).strip()
             
-            # NOVA FUNCIONALIDADE: Remove a repetição do número da cláusula no início do conteúdo
+            # Remove a repetição do número da cláusula no início do conteúdo
             clause_content = remove_clause_number_from_content(clause_content, clause_number)
 
             # Adiciona à lista se o conteúdo for relevante
@@ -103,8 +105,9 @@ def identify_clauses(text):
 def extract_clause_number(text):
     """Extrai apenas o número ou identificador da cláusula do texto"""
     
-    # Para cláusulas principais (ex: "CLÁUSULA QUARTA – QUANTIDADE...")
-    clausula_match = re.match(r'^(CLÁUSULA\s+[A-ZÇÃÔÊÁÉÍÓÚ]+)', text, re.IGNORECASE)
+    # Para cláusulas principais - REGEX MELHORADO
+    # Captura "CLÁUSULA" + uma ou mais palavras em maiúscula
+    clausula_match = re.match(r'^(CLÁUSULA\s+[A-ZÇÃÔÊÁÉÍÓÚÀÂ]+(?:\s+[A-ZÇÃÔÊÁÉÍÓÚÀÂ]+)*)', text, re.IGNORECASE)
     if clausula_match:
         return clausula_match.group(1).strip()
     
@@ -124,9 +127,14 @@ def remove_clause_number_from_content(content, clause_number):
     
     # Para cláusulas principais, remove "CLÁUSULA X – " do início
     if clause_number.startswith("CLÁUSULA"):
+        # REGEX MELHORADO para remover o título completo da cláusula
         # Remove padrões como "CLÁUSULA PRIMEIRA –", "CLÁUSULA SEGUNDA – OBJETO", etc.
-        pattern = rf'^{escaped_number}\s*–\s*[A-ZÁÉÍÓÚÇÃÔÊ\s]*\s*'
+        pattern = rf'^{escaped_number}\s*(?:–|—)?\s*[A-ZÁÉÍÓÚÇÃÔÊÀÂ\s,]*?\s*'
         content = re.sub(pattern, '', content, flags=re.IGNORECASE).strip()
+        
+        # Se ainda sobrou texto do título, fazer uma limpeza adicional
+        # Remove qualquer texto em maiúsculas no início até encontrar texto normal
+        content = re.sub(r'^[A-ZÁÉÍÓÚÇÃÔÊÀÂ\s,–—\.]+\s*', '', content).strip()
     
     # Para subcláusulas numeradas, remove apenas o número do início
     else:
@@ -268,7 +276,7 @@ def create_excel_file(processed_clauses):
         
         # Calcular largura ideal para coluna A (Clausula)
         max_clausula_len = max([len(str(row['Clausula'])) for row in processed_clauses]) + 2
-        max_clausula_len = min(max_clausula_len, 30)  # Máximo de 30 caracteres
+        max_clausula_len = min(max_clausula_len, 35)  # Máximo de 35 caracteres
         worksheet.set_column('A:A', max_clausula_len, number_format)
         
         # Para coluna B (Transcricao) - usar largura fixa otimizada para leitura
