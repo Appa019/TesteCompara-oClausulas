@@ -19,9 +19,16 @@ def extract_text_from_pdf(pdf_file):
     try:
         pdf_reader = PyPDF2.PdfReader(pdf_file)
         text = ""
+        total_pages = len(pdf_reader.pages)
+        
         # Começar da página 4 (índice 3) para pular sumário e páginas iniciais
-        for page_num in range(3, len(pdf_reader.pages)):  # Página 4 em diante
-            text += pdf_reader.pages[page_num].extract_text() + "\n"
+        start_page = min(3, total_pages - 1)  # Garantir que não exceda o número de páginas
+        
+        for page_num in range(start_page, total_pages):
+            page_text = pdf_reader.pages[page_num].extract_text()
+            if page_text.strip():  # Só adicionar se a página tem conteúdo
+                text += page_text + "\n"
+                
         return text
     except Exception as e:
         st.error(f"Erro ao extrair texto do PDF: {str(e)}")
@@ -31,35 +38,250 @@ def identify_clauses(text):
     """Identifica e extrai todas as cláusulas e subcláusulas, ignorando sumários"""
     clauses = []
     
-    # Padrões para identificar cláusulas
+    # Primeiro, vamos remover seções claramente do sumário
+    # Dividir texto em seções pelo padrão de páginas
+    text_clean = re.sub(r'Página \d+ de \d+', '', text)
+    
+    # Padrões para identificar cláusulas VÁLIDAS (não do sumário)
     patterns = [
-        # CLÁUSULA PRIMEIRA, SEGUNDA, etc.
-        r'CLÁUSULA\s+(?:PRIMEIRA|SEGUNDA|TERCEIRA|QUARTA|QUINTA|SEXTA|SÉTIMA|OITAVA|NONA|DÉCIMA|ONZE|DOZE|TREZE|QUATORZE|QUINZE|DEZESSEIS|DEZESSETE|DEZOITO|DEZENOVE|VINTE|VINTE\s+E\s+UM|VINTE\s+E\s+DOIS|VINTE\s+E\s+TRÊS)(?:\s*[-–]\s*[A-ZÁÊÔÕÇ\s]+)?',
-        # Numeração decimal: 1.1, 1.1.1, 1.1.1.1, etc.
-        r'^\d+\.(?:\d+\.)*\d*\s',
-        # Letras com parênteses: a), b), i), ii), etc.
-        r'^[a-z]\)\s',
-        r'^[ivx]+\)\s'
+        # CLÁUSULA PRIMEIRA, SEGUNDA, etc. (sem pontos no final ou números de página)
+        r'^CLÁUSULA\s+(?:PRIMEIRA|SEGUNDA|TERCEIRA|QUARTA|QUINTA|SEXTA|SÉTIMA|OITAVA|NONA|DÉCIMA|ONZE|DOZE|TREZE|QUATORZE|QUINZE|DEZESSEIS|DEZESSETE|DEZOITO|DEZENOVE|VINTE|VINTE\s+E\s+UM|VINTE\s+E\s+DOIS|VINTE\s+E\s+TRÊS)\s*[-–]\s*[A-ZÁÊÔÕÇ\s]+(?!\s*\.{3,})',
+        # Numeração decimal: 1.1, 1.1.1, 1.1.1.1, etc. (seguida de espaço e texto substantivo)
+        r'^\d+\.(?:\d+\.)*\d*\s+[A-Z]',
+        # Letras com parênteses: a), b), i), ii), etc. (seguida de texto substantivo)
+        r'^[a-z]\)\s+[a-z]',
+        r'^[ivx]+\)\s+[a-z]'
     ]
     
-    # Palavras que indicam sumário/índice (para filtrar)
-    sumario_keywords = ['sumário', 'índice', 'página', 'de 199', 'anexo i', 'anexo ii', 'anexo iii', 'anexo iv', 'apêndice']
+    # Palavras que indicam definitivamente sumário/índice
+    sumario_indicators = [
+        '\.{3,}',  # Pontos de continuação (...)
+        '\d+
+
+def generate_summary(clause_text, api_key):
+    """Gera resumo da cláusula usando OpenAI"""
+    if not api_key:
+        return ""
     
-    lines = text.split('\n')
+    try:
+        client = openai.OpenAI(api_key=api_key)
+        
+        prompt = f"""Esta cláusula é parte de um contrato de transporte de gás natural. 
+        Faça um resumo geral completo do conteúdo em um parágrafo, explicando do que trata esta cláusula:
+
+        {clause_text}
+
+        Resumo:"""
+        
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "user", "content": prompt}
+            ],
+            max_tokens=300,
+            temperature=0.3
+        )
+        
+        return response.choices[0].message.content.strip()
+        
+    except Exception as e:
+        return f"Erro no resumo: {str(e)}"
+
+def process_contract(pdf_file, api_key=None):
+    """Processa o contrato completo"""
+    
+    # Extrair texto do PDF
+    st.info("📄 Extraindo texto do PDF (a partir da página 4)...")
+    text = extract_text_from_pdf(pdf_file)
+    
+    if not text:
+        return None
+    
+    # Identificar cláusulas
+    st.info("🔍 Identificando cláusulas...")
+    clauses = identify_clauses(text)
+    
+    if not clauses:
+        st.warning("⚠️ Nenhuma cláusula foi encontrada no documento.")
+        return None
+    
+    st.success(f"✅ {len(clauses)} cláusulas encontradas!")
+    
+    # Processar cláusulas
+    processed_clauses = []
+    
+    if api_key:
+        st.info("🤖 Gerando resumos com IA...")
+        progress_bar = st.progress(0)
+        
+        for i, clause in enumerate(clauses):
+            # Gerar resumo
+            summary = generate_summary(clause['conteudo'], api_key)
+            
+            processed_clauses.append({
+                'Clausula': clause['numero'],
+                'Transcricao': clause['conteudo'],
+                'Resumo': summary
+            })
+            
+            # Atualizar progresso
+            progress = (i + 1) / len(clauses)
+            progress_bar.progress(progress)
+            
+            # Rate limiting
+            time.sleep(0.5)
+            
+        progress_bar.empty()
+    else:
+        st.info("📝 Processando sem resumos (chave API não fornecida)...")
+        for clause in clauses:
+            processed_clauses.append({
+                'Clausula': clause['numero'],
+                'Transcricao': clause['conteudo'],
+                'Resumo': ''
+            })
+    
+    return processed_clauses
+
+def create_excel_file(processed_clauses):
+    """Cria arquivo Excel com as cláusulas processadas"""
+    df = pd.DataFrame(processed_clauses)
+    
+    # Criar arquivo Excel em memória
+    output = BytesIO()
+    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+        df.to_excel(writer, sheet_name='Clausulas', index=False)
+        
+        # Formatação
+        workbook = writer.book
+        worksheet = writer.sheets['Clausulas']
+        
+        # Definir larguras das colunas
+        worksheet.set_column('A:A', 20)  # Clausula
+        worksheet.set_column('B:B', 80)  # Transcricao
+        worksheet.set_column('C:C', 50)  # Resumo
+        
+        # Formatação do cabeçalho
+        header_format = workbook.add_format({
+            'bold': True,
+            'bg_color': '#D7E4BC',
+            'border': 1
+        })
+        
+        for col_num, value in enumerate(df.columns.values):
+            worksheet.write(0, col_num, value, header_format)
+    
+    output.seek(0)
+    return output
+
+# Interface principal
+def main():
+    st.title("📄 Processador de Cláusulas Contratuais")
+    st.markdown("**Plataforma para extração e resumo de cláusulas de contratos NTS, TAG e TBG**")
+    
+    # Sidebar para configurações
+    with st.sidebar:
+        st.header("⚙️ Configurações")
+        
+        # Campo para API Key
+        api_key = st.text_input(
+            "🔑 Chave API OpenAI (opcional)",
+            type="password",
+            help="Necessária apenas para gerar resumos. Deixe vazio para processar sem resumos."
+        )
+        
+        if api_key:
+            st.success("✅ Chave API fornecida - resumos serão gerados")
+        else:
+            st.info("ℹ️ Sem chave API - processamento sem resumos")
+        
+        st.markdown("---")
+        st.markdown("**Formatos suportados:** PDF")
+        st.markdown("**Tipos de contrato:** NTS, TAG, TBG")
+    
+    # Upload do arquivo
+    st.header("📤 Upload do Contrato")
+    uploaded_file = st.file_uploader(
+        "Selecione o arquivo PDF do contrato",
+        type=['pdf'],
+        help="Faça upload de um contrato em formato PDF"
+    )
+    
+    if uploaded_file is not None:
+        # Mostrar informações do arquivo
+        st.info(f"📁 Arquivo: {uploaded_file.name} ({uploaded_file.size:,} bytes)")
+        
+        # Botão para processar
+        if st.button("🚀 Processar Contrato", type="primary"):
+            try:
+                with st.spinner("Processando contrato..."):
+                    processed_clauses = process_contract(uploaded_file, api_key)
+                
+                if processed_clauses:
+                    st.success("✅ Processamento concluído!")
+                    
+                    # Mostrar preview dos dados
+                    st.header("👀 Preview dos Resultados")
+                    df_preview = pd.DataFrame(processed_clauses)
+                    st.dataframe(df_preview.head(10), use_container_width=True)
+                    
+                    if len(processed_clauses) > 10:
+                        st.info(f"Mostrando 10 de {len(processed_clauses)} cláusulas encontradas.")
+                    
+                    # Gerar e oferecer download do Excel
+                    excel_file = create_excel_file(processed_clauses)
+                    
+                    st.header("💾 Download")
+                    st.download_button(
+                        label="📥 Baixar Excel com Cláusulas",
+                        data=excel_file,
+                        file_name="resumoclausulas.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    )
+                
+            except Exception as e:
+                st.error(f"❌ Erro durante o processamento: {str(e)}")
+                st.code(traceback.format_exc())
+
+if __name__ == "__main__":
+    main(),    # Linha terminando apenas com número
+        'página \d+', 'de \d+',
+        'anexo i\s*[-–]', 'anexo ii\s*[-–]', 'anexo iii\s*[-–]', 'anexo iv\s*[-–]',
+        'apêndice i\s*[-–]', 'apêndice ii\s*[-–]', 'apêndice iii\s*[-–]', 'apêndice iv\s*[-–]'
+    ]
+    
+    lines = text_clean.split('\n')
     current_clause = None
     current_content = []
+    in_main_content = False
     
     for line in lines:
         line = line.strip()
         if not line:
             continue
             
-        # Filtrar linhas que parecem ser do sumário
         line_lower = line.lower()
-        if any(keyword in line_lower for keyword in sumario_keywords):
+        
+        # Detectar quando chegamos no conteúdo principal (após "considerando que:")
+        if 'considerando que:' in line_lower:
+            in_main_content = True
             continue
             
-        # Verificar se a linha é uma nova cláusula
+        # Se ainda não chegamos no conteúdo principal, pular
+        if not in_main_content:
+            continue
+            
+        # Filtrar linhas que são claramente do sumário
+        is_sumario = False
+        for indicator in sumario_indicators:
+            if re.search(indicator, line_lower):
+                is_sumario = True
+                break
+                
+        if is_sumario:
+            continue
+            
+        # Verificar se a linha é uma nova cláusula válida
         is_clause = False
         clause_match = None
         
@@ -74,7 +296,12 @@ def identify_clauses(text):
             # Salvar cláusula anterior se existir
             if current_clause and current_content:
                 content = ' '.join(current_content).strip()
-                if content and len(content) > 20:  # Filtrar conteúdos muito curtos
+                # Filtros adicionais para garantir qualidade do conteúdo
+                if (content and 
+                    len(content) > 50 and  # Conteúdo mínimo
+                    not re.search(r'\.{3,}', content) and  # Sem pontos de continuação
+                    not content.endswith('.'*3)):  # Não termina com pontos
+                    
                     clauses.append({
                         'numero': current_clause,
                         'conteudo': content
@@ -85,18 +312,23 @@ def identify_clauses(text):
             current_content = []
             
             # Se a linha tem conteúdo após o número/identificador, incluir
-            remaining_text = line[clause_match.end():].strip()
-            if remaining_text:
-                current_content.append(remaining_text)
+            if clause_match:
+                remaining_text = line[clause_match.end():].strip()
+                if remaining_text:
+                    current_content.append(remaining_text)
         else:
             # Adicionar linha ao conteúdo da cláusula atual
-            if current_clause:
+            if current_clause and not is_sumario:
                 current_content.append(line)
     
     # Adicionar última cláusula
     if current_clause and current_content:
         content = ' '.join(current_content).strip()
-        if content and len(content) > 20:  # Filtrar conteúdos muito curtos
+        if (content and 
+            len(content) > 50 and
+            not re.search(r'\.{3,}', content) and
+            not content.endswith('.'*3)):
+            
             clauses.append({
                 'numero': current_clause,
                 'conteudo': content
