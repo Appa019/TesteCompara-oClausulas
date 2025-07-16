@@ -116,7 +116,7 @@ def identify_clauses(text):
     return clauses
 
 def generate_summary(clause_text, api_key):
-    """Gera resumo da cláusula usando OpenAI"""
+    """Gera resumo da cláusula usando OpenAI GPT-4.1-nano"""
     if not api_key:
         return ""
     
@@ -131,7 +131,7 @@ def generate_summary(clause_text, api_key):
         Resumo:"""
         
         response = client.chat.completions.create(
-            model="gpt-4o-mini",
+            model="gpt-4.1-nano",  # Modelo atualizado para GPT-4.1-nano
             messages=[
                 {"role": "user", "content": prompt}
             ],
@@ -170,7 +170,7 @@ def process_contract(pdf_file, api_key=None):
     processed_clauses = []
     
     if api_key:
-        st.info("🤖 Gerando resumos com IA...")
+        st.info("🤖 Gerando resumos com IA (GPT-4.1-nano)...")
         progress_bar = st.progress(0)
         
         for i, clause in enumerate(clauses):
@@ -187,8 +187,8 @@ def process_contract(pdf_file, api_key=None):
             progress = (i + 1) / len(clauses)
             progress_bar.progress(progress)
             
-            # Rate limiting
-            time.sleep(0.5)
+            # Rate limiting reduzido para GPT-4.1-nano (mais rápido)
+            time.sleep(0.2)
             
         progress_bar.empty()
     else:
@@ -268,11 +268,11 @@ def create_excel_file(processed_clauses):
 
 # Interface principal
 def main():
-    st.title("📄 Processador de Cláusulas Contratuais - VERSÃO CORRIGIDA")
+    st.title("📄 Processador de Cláusulas Contratuais")
     st.markdown("**Plataforma para extração e resumo de cláusulas numeradas de contratos NTS, TAG e TBG**")
     
-    # Aviso sobre a correção
-    st.success("🔧 **VERSÃO CORRIGIDA**: Agora remove corretamente números de cláusulas que ficavam misturados no conteúdo!")
+    # Aviso sobre as melhorias
+    st.success("🔧 **VERSÃO OTIMIZADA**: Correção de extração + GPT-4.1-nano (mais rápido e econômico)")
     
     # Sidebar para configurações
     with st.sidebar:
@@ -287,6 +287,7 @@ def main():
         
         if api_key:
             st.success("✅ Chave API fornecida - resumos serão gerados")
+            st.info("🚀 Usando GPT-4.1-nano (mais rápido e econômico)")
         else:
             st.info("ℹ️ Sem chave API - processamento sem resumos")
         
@@ -296,10 +297,10 @@ def main():
         st.markdown("**Foco:** Apenas cláusulas numeradas (ex: 1.1, 1.1.1)")
         
         st.markdown("---")
-        st.markdown("**🔧 Correções implementadas:**")
-        st.markdown("• Remove números de cláusulas do final do texto")
-        st.markdown("• Remove fragmentos como 'Página X de Y'")
-        st.markdown("• Melhora a limpeza geral do conteúdo")
+        st.markdown("**🔧 Melhorias:**")
+        st.markdown("• ✅ Correção de cláusulas misturadas")
+        st.markdown("• 🚀 GPT-4.1-nano (mais rápido)")
+        st.markdown("• 💰 Custo reduzido (75% menor)")
     
     # Upload do arquivo
     st.header("📤 Upload do Contrato")
@@ -335,9 +336,9 @@ def main():
                     
                     st.header("💾 Download")
                     st.download_button(
-                        label="📥 Baixar Excel com Cláusulas (Versão Corrigida)",
+                        label="📥 Baixar Excel com Cláusulas (Versão Otimizada)",
                         data=excel_file,
-                        file_name="clausulas_numeradas_corrigido.xlsx",
+                        file_name="clausulas_numeradas_otimizado.xlsx",
                         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                     )
                 
