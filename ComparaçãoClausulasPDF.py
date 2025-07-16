@@ -46,7 +46,7 @@ def fix_text_breaks(text):
     return text
 
 def identify_clauses(text):
-    """Identifica e extrai APENAS cláusulas numeradas (ignora cláusulas principais)."""
+    """VERSÃO CORRIGIDA - Identifica e extrai APENAS cláusulas numeradas (ignora cláusulas principais)."""
     clauses = []
     
     # REGEX SIMPLIFICADO - APENAS CLÁUSULAS NUMERADAS
@@ -80,14 +80,30 @@ def identify_clauses(text):
         
         # Remove o número da cláusula do início do conteúdo
         clause_content = clause_block
-        
-        # Remove o número do início do conteúdo
         clause_content = re.sub(rf'^{re.escape(clause_number)}\s*', '', clause_content).strip()
+        
+        # CORREÇÃO PRINCIPAL: Remover qualquer padrão de cláusula que apareça no final do texto
+        # Isso evita que o número da próxima cláusula fique misturado no conteúdo
+        
+        # Procurar por padrões de cláusulas no final do texto
+        # Padrão: número.número.número seguido de espaço e letra maiúscula
+        end_pattern = re.search(r'\s+(\d{1,2}(?:\.\d{1,2}){1,4}\.?)\s+([A-ZÁÉÍÓÚÇÃÔÊ].*?)$', clause_content, re.DOTALL)
+        
+        if end_pattern:
+            # Remove tudo a partir do padrão encontrado no final
+            clause_content = clause_content[:clause_content.rfind(end_pattern.group(0))].strip()
         
         # Substitui quebras de linha por espaços
         clause_content = clause_content.replace('\n', ' ').strip()
         
         # Remove espaços múltiplos
+        clause_content = re.sub(r'\s+', ' ', clause_content).strip()
+        
+        # LIMPEZA ADICIONAL: Remover fragmentos de texto que claramente pertencem à próxima cláusula
+        # Procurar por padrões como "Página X de Y" que podem ter ficado no meio
+        clause_content = re.sub(r'\s*Página\s+\d+\s+de\s+\d+\s*', ' ', clause_content)
+        
+        # Remover espaços múltiplos novamente após limpeza
         clause_content = re.sub(r'\s+', ' ', clause_content).strip()
 
         # Adiciona à lista se o conteúdo for relevante
@@ -139,7 +155,7 @@ def process_contract(pdf_file, api_key=None):
         return None
     
     # Identificar cláusulas
-    st.info("🔍 Identificando cláusulas numeradas (ignorando cláusulas principais)...")
+    st.info("🔍 Identificando cláusulas numeradas (versão corrigida)...")
     clauses = identify_clauses(text)
     
     if not clauses:
@@ -252,8 +268,11 @@ def create_excel_file(processed_clauses):
 
 # Interface principal
 def main():
-    st.title("📄 Processador de Cláusulas Contratuais")
+    st.title("📄 Processador de Cláusulas Contratuais - VERSÃO CORRIGIDA")
     st.markdown("**Plataforma para extração e resumo de cláusulas numeradas de contratos NTS, TAG e TBG**")
+    
+    # Aviso sobre a correção
+    st.success("🔧 **VERSÃO CORRIGIDA**: Agora remove corretamente números de cláusulas que ficavam misturados no conteúdo!")
     
     # Sidebar para configurações
     with st.sidebar:
@@ -275,6 +294,12 @@ def main():
         st.markdown("**Formatos suportados:** PDF")
         st.markdown("**Tipos de contrato:** NTS, TAG, TBG")
         st.markdown("**Foco:** Apenas cláusulas numeradas (ex: 1.1, 1.1.1)")
+        
+        st.markdown("---")
+        st.markdown("**🔧 Correções implementadas:**")
+        st.markdown("• Remove números de cláusulas do final do texto")
+        st.markdown("• Remove fragmentos como 'Página X de Y'")
+        st.markdown("• Melhora a limpeza geral do conteúdo")
     
     # Upload do arquivo
     st.header("📤 Upload do Contrato")
@@ -310,9 +335,9 @@ def main():
                     
                     st.header("💾 Download")
                     st.download_button(
-                        label="📥 Baixar Excel com Cláusulas",
+                        label="📥 Baixar Excel com Cláusulas (Versão Corrigida)",
                         data=excel_file,
-                        file_name="clausulas_numeradas.xlsx",
+                        file_name="clausulas_numeradas_corrigido.xlsx",
                         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                     )
                 
