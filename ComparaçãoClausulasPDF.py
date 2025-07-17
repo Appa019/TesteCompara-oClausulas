@@ -10,7 +10,7 @@ import traceback
 def set_page_config():
     """Configuração da página com cores da CSN"""
     st.set_page_config(
-        page_title="Processador de Cláusulas - CSN",
+        page_title="Processador de Cláusulas - CSN GÁS NATURAL",
         page_icon="📄",
         layout="wide",
         initial_sidebar_state="expanded"
