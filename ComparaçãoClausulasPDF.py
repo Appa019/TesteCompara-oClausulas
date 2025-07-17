@@ -374,7 +374,7 @@ def main():
             <img src="https://upload.wikimedia.org/wikipedia/pt/e/eb/Companhia_Sider%C3%BArgica_Nacional.png" 
                  alt="Logo CSN" class="logo-img">
             <div class="header-text">
-                <h1>Processador de Cláusulas Contratuais</h1>
+                <h1>Processador de Cláusulas Contratuais-Transportadoras Gás</h1>
                 <p>Extração e resumo de cláusulas numeradas de contratos</p>
                 <p><small>NTS | TAG | TBG | Processamento Automatizado</small></p>
             </div>
